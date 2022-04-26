@@ -1,0 +1,17 @@
+{
+    "name": "dp/dumpable",
+
+    "require-dev": {
+        "phpunit/phpunit": "^9.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "dp\\": "src/dp"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "tests\\": "tests/"
+        }
+    }
+}

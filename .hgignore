@@ -1,0 +1,10 @@
+\.orig$
+\.orig\..*$
+\.chg\..*$
+\.rej$
+\.conflict\~$
+\.directory$
+\.phpunit\.
+nbproject$
+vendor$
+_notes$
