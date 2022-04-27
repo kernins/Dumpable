@@ -3,7 +3,7 @@ namespace tests\fixture;
 use dp\dumpable;
 
 
-class NestedDumpable implements dumpable\IDumpable
+class NestedDumpableConcrete implements dumpable\IDumpable
    {
       use dumpable\TDumpable;
       

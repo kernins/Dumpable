@@ -6,27 +6,17 @@ use Attribute, dp\dumpable;
 #[Attribute(Attribute::TARGET_PROPERTY)]
 final class PropDumpable extends PropAbstract
    {
-      protected string  $className;
+      protected ?string $className = null;
       protected int     $nestedDumpMode = 0;
       
       
       
-      public function __construct(string $class, bool $public=true, ?string $dumpAs=null, bool|string $collection=false)
+      public function __construct(?string $class=null, bool $public=true, ?string $dumpAs=null, bool|string $collection=false)
          {
-            try 
+            if($class !== null)
                {
-                  $rc = new \ReflectionClass($class);
-                  if(!$rc->implementsInterface(dumpable\IDumpable::class))
-                     throw new \DomainException('Target class must implement IDumpable interface');
+                  self::_validateClassName($class);
                   $this->className = $class;
-               }
-            catch(\ReflectionException $ex)
-               {
-                  throw new \InvalidArgumentException(
-                     'Invalid target class given: '.$ex->getMessage(),
-                     $ex->getCode(),
-                     $ex
-                  );
                }
          
             parent::__construct($public, $dumpAs, $collection);
@@ -48,12 +38,51 @@ final class PropDumpable extends PropAbstract
          {
             if(!($val instanceof dumpable\IDumpable))
                throw new \DomainException('Expected an instance of IDumpable, got '.gettype($val));
-         
-            return $val->dump($this->nestedDumpMode);
+            
+            $dump = $val->dump($this->nestedDumpMode);
+            if(empty($this->className) && !($this->nestedDumpMode & dumpable\IDumpable::DF_MODE_PUBLIC))
+               {
+                  //class-unhinted private dump
+                  $ret = ['__class__' => $val::class];
+                  if(!empty($dump)) $ret['state'] = $dump; //dumpable may be stateless/all-defaults
+                  return $ret;
+               }
+            else return $dump; //class-hinted or public dump
          }
-         
+      
       protected function restoreValue($val): dumpable\IDumpable
          {
-            return $this->className::restore($val);
+            if(empty($this->className))
+               {
+                  $class = $val['__class__'] ?? null;
+                  $val = $val['state'] ?? []; //empty-array-fallback is for stateless/all-defaults dumpables
+               }
+            else $class = $this->className;
+         
+            if(empty($class)) throw new \InvalidArgumentException(
+               'Given value is missing required target class FQN specification'
+            );
+            
+            self::_validateClassName($class);
+            return $class::restore($val);
+         }
+      
+      
+      private static function _validateClassName(string $fqn): void
+         {
+            try 
+               {
+                  $rc = new \ReflectionClass($fqn);
+                  if(!$rc->implementsInterface(dumpable\IDumpable::class))
+                     throw new \DomainException('Target class must implement IDumpable interface');
+               }
+            catch(\ReflectionException $ex)
+               {
+                  throw new \InvalidArgumentException(
+                     'Invalid target class given: '.$fqn.': '.$ex->getMessage(),
+                     $ex->getCode(),
+                     $ex
+                  );
+               }
          }
    }

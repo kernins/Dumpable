@@ -158,9 +158,7 @@ final class DumpableTest extends TestCase
          
       public function testStatelessDumpable(): void
          {
-            $subj = (new class() implements dumpable\IDumpable {
-               use dumpable\TDumpable;
-            });
+            $subj = new fixture\StatelessDumpable();
             
             $this->assertSame([], $subj->dump());
             $this->assertInstanceOf($subj::class, $subj::restore([]));
@@ -402,18 +400,18 @@ final class DumpableTest extends TestCase
       /**
        * @depends testUnhintedScalarDump
        */
-      public function testHintedNestedDumpable(array $unhintedScalarsDump)
+      public function testHintedDumpableConcreteNested(array $unhintedScalarsDump)
          {
             $subj = (new class($unhintedScalarsDump) implements dumpable\IDumpable {
                use dumpable\TDumpable;
                
-               #[dumpable\attributes\PropDumpable(class:fixture\NestedDumpable::class)]
-               public fixture\NestedDumpable $nested;
+               #[dumpable\attributes\PropDumpable(class:fixture\NestedDumpableConcrete::class)]
+               public fixture\NestedDumpableConcrete $nested;
                
                
                public function __construct(array $unhintedScalarsDump)
                   {
-                     $this->nested = new fixture\NestedDumpable(
+                     $this->nested = new fixture\NestedDumpableConcrete(
                         fixture\UnhintedScalarsDumpable::restore($unhintedScalarsDump)
                      );
                   }
@@ -428,7 +426,7 @@ final class DumpableTest extends TestCase
             $this->assertSame($arr, $subj::restore($arr)->dump());
          }
          
-      public function testHintedDumpableInexistentClass()
+      public function testHintedDumpableConcreteInexistentClass()
          {
             $subj = (new class() implements dumpable\IDumpable {
                use dumpable\TDumpable;
@@ -446,7 +444,7 @@ final class DumpableTest extends TestCase
             $subj->dump();
          }
          
-      public function testHintedDumpableInvalidClass()
+      public function testHintedDumpableConcreteInvalidClass()
          {
             $subj = (new class() implements dumpable\IDumpable {
                use dumpable\TDumpable;
@@ -468,37 +466,97 @@ final class DumpableTest extends TestCase
       /**
        * @depends testUnhintedScalarDump
        */
-      public function testHintedContainerizedDumpable(array $unhintedScalarsDump)
+      public function testHintedDumpableAbstractDump(array $unhintedScalarsDump): array
          {
             $nested = fixture\UnhintedScalarsDumpable::restore($unhintedScalarsDump);
-         
-            $subj = (new class($nested) implements dumpable\IDumpable {
-               use dumpable\TDumpable;
-               
-               #[dumpable\attributes\PropDumpable(class:dumpable\DumpableContainer::class)]
-               public dumpable\DumpableContainer $container;
-               
-               
-               public function __construct(dumpable\IDumpable $dumpable)
-                  {
-                     $this->container = new dumpable\DumpableContainer($dumpable);
-                  }
-            });
+            $subj = new fixture\NestedDumpableAbstract($nested);
             
-            $arr = [
-               'container' => [
-                  'className' => $nested::class,
-                  'state' => $nested->dump()
+            $dump = [
+               'nested' => [
+                  '__class__' => $nested::class,
+                  'state'     => $unhintedScalarsDump
                ]
             ];
-            $this->assertSame($arr, $subj->dump());
-            $this->assertSame($arr, $subj::restore($arr)->dump());
-            
+            $this->assertSame($dump, $subj->dump());
             $this->assertSame([
-               'container' => $nested->dump(dumpable\IDumpable::DF_MODE_PUBLIC)
-               ],
-               $subj->dump(dumpable\IDumpable::DF_MODE_PUBLIC)
+               'nested' => $nested->dump(dumpable\IDumpable::DF_MODE_PUBLIC)
+            ], $subj->dump(dumpable\IDumpable::DF_MODE_PUBLIC));
+            
+            return $dump;
+         }
+         
+      /**
+       * @depends testHintedDumpableAbstractDump
+       * @depends testUnhintedScalarDump
+       */
+      public function testHintedDumpableAbstractRestore(array $dump, array $nestedDump): void
+         {
+            $subj = fixture\NestedDumpableAbstract::restore($dump);
+            $this->assertInstanceOf(fixture\UnhintedScalarsDumpable::class, $subj->nested);
+            $this->assertSame($nestedDump, $subj->nested->dump());
+         }
+         
+      public function testHintedDumpableAbstractStateless(): void
+         {
+            $subj = new fixture\NestedDumpableAbstract(
+               new fixture\StatelessDumpable()
             );
+            
+            $dump = [
+               'nested' => [
+                  '__class__' => fixture\StatelessDumpable::class
+                  //empty state omitted in dump
+               ]
+            ];
+            $this->assertSame($dump, $subj->dump());
+            $this->assertSame([
+               'nested' => []
+            ], $subj->dump(dumpable\IDumpable::DF_MODE_PUBLIC));
+            
+            $rSubj = fixture\NestedDumpableAbstract::restore($dump);
+            $this->assertInstanceOf(fixture\StatelessDumpable::class, $rSubj->nested);
+         }
+      
+      public function testHintedDumpableAbstractRestoreMissingClass(): void
+         {
+            $dump = [
+               'nested' => [
+                  //missing __class__
+                  'state' => []
+               ]
+            ];
+            
+            $this->expectException(\InvalidArgumentException::class);
+            $this->expectExceptionMessage('missing required target class FQN');
+            fixture\NestedDumpableAbstract::restore($dump);
+         }
+         
+      public function testHintedDumpableAbstractRestoreInexistentClass(): void
+         {
+            $dump = [
+               'nested' => [
+                  '__class__' => '\NoSuchClass',
+                  'state' => []
+               ]
+            ];
+            
+            $this->expectException(\InvalidArgumentException::class);
+            $this->expectExceptionMessage('Invalid target class');
+            fixture\NestedDumpableAbstract::restore($dump);
+         }
+      
+      public function testHintedDumpableAbstractRestoreInvalidClass(): void
+         {
+            $dump = [
+               'nested' => [
+                  '__class__' => \SplMaxHeap::class,
+                  'state' => []
+               ]
+            ];
+            
+            $this->expectException(\DomainException::class);
+            $this->expectExceptionMessage('must implement IDumpable');
+            fixture\NestedDumpableAbstract::restore($dump);
          }
       
       
